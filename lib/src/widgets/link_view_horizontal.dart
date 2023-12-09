@@ -70,7 +70,7 @@ class LinkViewHorizontal extends StatelessWidget {
               fontWeight: FontWeight.w400,
             );
 
-        return InkWell(
+        return GestureDetector(
           onTap: () => onTap(),
           child: Row(
             children: <Widget>[

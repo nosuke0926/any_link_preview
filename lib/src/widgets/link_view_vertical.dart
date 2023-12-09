@@ -65,7 +65,7 @@ class LinkViewVertical extends StatelessWidget {
             fontWeight: FontWeight.w400,
           );
 
-      return InkWell(
+      return GestureDetector(
           onTap: () => onTap(),
           child: Column(
             children: <Widget>[
