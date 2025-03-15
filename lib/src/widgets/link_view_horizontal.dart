@@ -1,51 +1,49 @@
+import 'package:any_link_preview/src/utilities/image_provider.dart';
 import 'package:flutter/material.dart';
 
 class LinkViewHorizontal extends StatelessWidget {
   final String url;
   final String title;
   final String description;
-  final ImageProvider? imageProvider;
-  final Function() onTap;
+  final ImageProviderValue imageProvider;
+  final VoidCallback onTap;
   final TextStyle? titleTextStyle;
   final TextStyle? bodyTextStyle;
-  final bool? showMultiMedia;
+  final bool showMultiMedia;
   final TextOverflow? bodyTextOverflow;
   final int? bodyMaxLines;
   final double? radius;
   final Color? bgColor;
 
-  LinkViewHorizontal({
-    Key? key,
+  const LinkViewHorizontal({
+    super.key,
     required this.url,
     required this.title,
     required this.description,
     required this.imageProvider,
     required this.onTap,
+    this.showMultiMedia = true,
     this.titleTextStyle,
     this.bodyTextStyle,
-    this.showMultiMedia,
     this.bodyTextOverflow,
     this.bodyMaxLines,
     this.bgColor,
     this.radius,
-  }) : super(key: key);
+  });
 
   double computeTitleFontSize(double width) {
-    var size = width * 0.13;
-    if (size > 15) {
-      size = 15;
-    }
-    return size;
+    final size = width * 0.13;
+    return size > 15 ? 15 : size;
   }
 
-  int computeTitleLines(layoutHeight) {
+  int computeTitleLines(double layoutHeight) {
     return layoutHeight >= 100 ? 2 : 1;
   }
 
-  int computeBodyLines(layoutHeight) {
+  int computeBodyLines(double layoutHeight) {
     var lines = 1;
     if (layoutHeight > 40) {
-      lines += (layoutHeight - 40.0) ~/ 15.0 as int;
+      lines += (layoutHeight - 40.0) ~/ 15.0;
     }
     return lines;
   }
@@ -54,59 +52,82 @@ class LinkViewHorizontal extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        var layoutWidth = constraints.biggest.width;
-        var layoutHeight = constraints.biggest.height;
+        final layoutWidth = constraints.biggest.width;
+        final layoutHeight = constraints.biggest.height;
+        final computedFontSize = computeTitleFontSize(layoutWidth);
 
-        var titleFontSize_ = titleTextStyle ??
+        final titleStyle_ = titleTextStyle ??
             TextStyle(
-              fontSize: computeTitleFontSize(layoutWidth),
+              fontSize: computedFontSize,
               color: Colors.black,
               fontWeight: FontWeight.bold,
             );
-        var bodyFontSize_ = bodyTextStyle ??
+        final bodyStyle_ = bodyTextStyle ??
             TextStyle(
-              fontSize: computeTitleFontSize(layoutWidth) - 1,
+              fontSize: computedFontSize - 1,
               color: Colors.grey,
               fontWeight: FontWeight.w400,
             );
+        final cardBorderRadius = radius == 0
+            ? BorderRadius.zero
+            : BorderRadius.circular(
+                radius!,
+              );
 
         return GestureDetector(
           onTap: () => onTap(),
           child: Row(
-            children: <Widget>[
-              showMultiMedia!
-                  ? Expanded(
-                      flex: 2,
-                      child: imageProvider == null
-                          ? Container(color: bgColor ?? Colors.grey)
-                          : Container(
-                              margin: EdgeInsets.only(right: 5),
-                              decoration: BoxDecoration(
-                                image: DecorationImage(
-                                  image: imageProvider!,
-                                  fit: BoxFit.cover,
-                                ),
-                                borderRadius: radius == 0
-                                    ? BorderRadius.zero
-                                    : BorderRadius.only(
-                                        topLeft: Radius.circular(radius!),
-                                        bottomLeft: Radius.circular(radius!),
-                                      ),
-                              ),
+            children: [
+              if (showMultiMedia)
+                Expanded(
+                  flex: 2,
+                  child: imageProvider.image == null &&
+                          imageProvider.svgImage == null
+                      ? Container(
+                          color: bgColor ?? Colors.grey,
+                          child: const Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 30,
+                              color: Colors.white,
                             ),
-                    )
-                  : SizedBox(width: 5),
+                          ),
+                        )
+                      : Container(
+                          margin: const EdgeInsets.only(right: 5),
+                          decoration: BoxDecoration(
+                            image: imageProvider.image != null
+                                ? DecorationImage(
+                                    image: imageProvider.image!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : null,
+                            borderRadius: radius == 0
+                                ? BorderRadius.zero
+                                : BorderRadius.horizontal(
+                                    left: Radius.circular(radius!),
+                                  ),
+                          ),
+                          child: imageProvider.svgImage ?? Container(),
+                        ),
+                )
+              else
+                const SizedBox(width: 5),
               Expanded(
                 flex: 4,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
                       _buildTitleContainer(
-                          titleFontSize_, computeTitleLines(layoutHeight)),
+                        titleStyle_,
+                        computeTitleLines(layoutHeight),
+                      ),
                       _buildBodyContainer(
-                          bodyFontSize_, computeBodyLines(layoutHeight))
+                        bodyStyle_,
+                        computeBodyLines(layoutHeight),
+                      ),
                     ],
                   ),
                 ),
@@ -118,16 +139,16 @@ class LinkViewHorizontal extends StatelessWidget {
     );
   }
 
-  Widget _buildTitleContainer(TextStyle titleTS_, int? maxLines_) {
+  Widget _buildTitleContainer(TextStyle titleStyle, int? maxLines_) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 2, 3, 1),
       child: Column(
         children: <Widget>[
           Container(
-            alignment: Alignment(-1.0, -1.0),
+            alignment: Alignment.topLeft,
             child: Text(
               title,
-              style: titleTS_,
+              style: titleStyle,
               overflow: TextOverflow.ellipsis,
               maxLines: maxLines_,
             ),
@@ -137,7 +158,7 @@ class LinkViewHorizontal extends StatelessWidget {
     );
   }
 
-  Widget _buildBodyContainer(TextStyle bodyTS_, int? maxLines_) {
+  Widget _buildBodyContainer(TextStyle bodyStyle, int? maxLines_) {
     return Expanded(
       flex: 2,
       child: Padding(
@@ -146,11 +167,11 @@ class LinkViewHorizontal extends StatelessWidget {
           children: <Widget>[
             Expanded(
               child: Container(
-                alignment: Alignment(-1.0, -1.0),
+                alignment: Alignment.topLeft,
                 child: Text(
                   description,
                   textAlign: TextAlign.left,
-                  style: bodyTS_,
+                  style: bodyStyle,
                   overflow: bodyTextOverflow ?? TextOverflow.ellipsis,
                   maxLines: bodyMaxLines ?? maxLines_,
                 ),

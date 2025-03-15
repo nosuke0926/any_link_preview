@@ -1,115 +1,135 @@
+import 'package:any_link_preview/src/utilities/image_provider.dart';
 import 'package:flutter/material.dart';
 
 class LinkViewVertical extends StatelessWidget {
   final String url;
   final String title;
   final String description;
-  final ImageProvider? imageProvider;
-  final Function() onTap;
+  final ImageProviderValue imageProvider;
+  final VoidCallback onTap;
   final TextStyle? titleTextStyle;
   final TextStyle? bodyTextStyle;
-  final bool? showMultiMedia;
+  final bool showMultiMedia;
   final TextOverflow? bodyTextOverflow;
   final int? bodyMaxLines;
   final double? radius;
   final Color? bgColor;
 
-  LinkViewVertical({
-    Key? key,
+  const LinkViewVertical({
+    super.key,
     required this.url,
     required this.title,
     required this.description,
     required this.imageProvider,
     required this.onTap,
+    this.showMultiMedia = true,
     this.titleTextStyle,
     this.bodyTextStyle,
-    this.showMultiMedia,
     this.bodyTextOverflow,
     this.bodyMaxLines,
     this.bgColor,
     this.radius,
-  }) : super(key: key);
+  });
 
-  double computeTitleFontSize(double height) {
-    var size = height * 0.13;
-    if (size > 15) {
-      size = 15;
-    }
-    return size;
+  double computeTitleFontSize(double width) {
+    final size = width * 0.13;
+    return size > 15 ? 15 : size;
   }
 
-  int computeTitleLines(layoutHeight, layoutWidth) {
-    return layoutHeight - layoutWidth < 50 ? 1 : 2;
+  int computeTitleLines(double layoutHeight, double layoutWidth) {
+    return (layoutHeight - layoutWidth < 50) ? 1 : 2;
   }
 
-  int? computeBodyLines(layoutHeight) {
-    return layoutHeight ~/ 60 == 0 ? 1 : layoutHeight ~/ 60;
+  int? computeBodyLines(double layoutHeight) {
+    final bodyLines = layoutHeight ~/ 60;
+    return bodyLines == 0 ? 1 : bodyLines;
   }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      var layoutWidth = constraints.biggest.width;
-      var layoutHeight = constraints.biggest.height;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layoutWidth = constraints.biggest.width;
+        final layoutHeight = constraints.biggest.height;
 
-      var titleTS_ = titleTextStyle ??
-          TextStyle(
-            fontSize: computeTitleFontSize(layoutHeight),
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          );
-      var bodyTS_ = bodyTextStyle ??
-          TextStyle(
-            fontSize: computeTitleFontSize(layoutHeight) - 1,
-            color: Colors.grey,
-            fontWeight: FontWeight.w400,
-          );
+        final titleStyle_ = titleTextStyle ??
+            TextStyle(
+              fontSize: computeTitleFontSize(layoutHeight),
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+            );
+        final bodyStyle_ = bodyTextStyle ??
+            TextStyle(
+              fontSize: computeTitleFontSize(layoutHeight) - 1,
+              color: Colors.grey,
+              fontWeight: FontWeight.w400,
+            );
+        final cardBorderRadius = radius == 0
+            ? BorderRadius.zero
+            : BorderRadius.circular(
+                radius!,
+              );
 
       return GestureDetector(
           onTap: () => onTap(),
           child: Column(
-            children: <Widget>[
-              showMultiMedia!
-                  ? Expanded(
-                      flex: 2,
-                      child: imageProvider == null
-                          ? Container(color: bgColor ?? Colors.grey)
-                          : Container(
-                              padding: EdgeInsets.only(bottom: 15),
-                              decoration: BoxDecoration(
-                                borderRadius: radius == 0
-                                    ? BorderRadius.zero
-                                    : BorderRadius.only(
-                                        topLeft: Radius.circular(12),
-                                        topRight: Radius.circular(12),
-                                      ),
-                                image: DecorationImage(
-                                  image: imageProvider!,
-                                  fit: BoxFit.fitWidth,
+            children: [
+              if (showMultiMedia)
+                Expanded(
+                  flex: 2,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(radius ?? 12),
+                      ),
+                      color: bgColor ?? Colors.grey,
+                      image: imageProvider.image != null
+                          ? DecorationImage(
+                              image: imageProvider.image!,
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: imageProvider.svgImage ??
+                        (imageProvider.image == null
+                            ? const Center(
+                                child: Icon(
+                                  Icons.broken_image,
+                                  size: 30,
+                                  color: Colors.white,
                                 ),
-                              ),
-                            ),
-                    )
-                  : SizedBox(height: 5),
+                              )
+                            : null),
+                  ),
+                )
+              else
+                const SizedBox(height: 5),
               _buildTitleContainer(
-                  titleTS_, computeTitleLines(layoutHeight, layoutWidth)),
-              _buildBodyContainer(bodyTS_, computeBodyLines(layoutHeight)),
+                titleStyle_,
+                computeTitleLines(layoutHeight, layoutWidth),
+              ),
+              _buildBodyContainer(
+                bodyStyle_,
+                computeBodyLines(layoutHeight),
+              ),
             ],
-          ));
-    });
+          ),
+        );
+      },
+    );
   }
 
-  Widget _buildTitleContainer(TextStyle titleTS_, int? maxLines_) {
+  Widget _buildTitleContainer(TextStyle titleStyle, int? maxLines_) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 5, 5, 1),
       child: Container(
-        alignment: Alignment(-1.0, -1.0),
+        alignment: Alignment.topLeft,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Text(
               title,
-              style: titleTS_,
+              style: titleStyle,
               overflow: TextOverflow.ellipsis,
               maxLines: maxLines_,
             ),
@@ -119,16 +139,15 @@ class LinkViewVertical extends StatelessWidget {
     );
   }
 
-  Widget _buildBodyContainer(TextStyle bodyTS_, int? maxLines_) {
+  Widget _buildBodyContainer(TextStyle bodyStyle, int? maxLines_) {
     return Expanded(
-      flex: 1,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(10, 0, 5, 5),
         child: Container(
-          alignment: Alignment(-1.0, -1.0),
+          alignment: Alignment.topLeft,
           child: Text(
             description,
-            style: bodyTS_,
+            style: bodyStyle,
             overflow: bodyTextOverflow ?? TextOverflow.ellipsis,
             maxLines: bodyMaxLines ?? maxLines_,
           ),

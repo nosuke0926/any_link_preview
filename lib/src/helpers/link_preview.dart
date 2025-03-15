@@ -1,113 +1,119 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:any_link_preview/any_link_preview.dart';
+import 'package:any_link_preview/src/parser/util.dart';
+import 'package:any_link_preview/src/utilities/url_resolver.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:string_validator/string_validator.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'link_analyzer.dart';
+import '../utilities/image_provider.dart';
 import '../widgets/link_view_horizontal.dart';
 import '../widgets/link_view_vertical.dart';
+import 'link_analyzer.dart';
 
 enum UIDirection { uiDirectionVertical, uiDirectionHorizontal }
 
 class AnyLinkPreview extends StatefulWidget {
-  /// Display direction. One among `uiDirectionVertical, uiDirectionHorizontal`
-  /// By default it is `uiDirectionVertical`
+  /// Display direction. Either [UIDirection.uiDirectionVertical] or
+  /// [UIDirection.uiDirectionHorizontal]. Defaults to vertical direction.
   final UIDirection displayDirection;
 
-  /// Parameter to choose how you'd like the app to handle the link
-  /// Default is `LaunchMode.platformDefault`
+  /// Represents the mechanism used to open URLs via [launchUrl]. Defaults to
+  /// [LaunchMode.platformDefault]
   final LaunchMode urlLaunchMode;
 
-  /// Web address (Url that need to be parsed)
-  /// For IOS & Web, only HTTP and HTTPS are support
-  /// For Android, all url's are supported
+  /// URL represented in string. For IOS & Web, only HTTP and HTTPS are
+  /// supported. For Android, all URLs are supported.
   final String link;
 
-  /// Customize background colour
-  /// Defaults to `Color.fromRGBO(235, 235, 235, 1)`
+  /// Customize background color. Defaults to `Color.fromRGBO(235, 235, 235, 1)`
   final Color? backgroundColor;
 
-  /// Widget that need to be shown when
-  /// plugin is trying to fetch metadata
-  /// If not given anything then default one will be shown
+  /// Placeholder widget that is shown while the metadata request is pending.
+  /// If not present, the default loading widget will be shown.
   final Widget? placeholderWidget;
 
-  /// Widget that need to be shown if something goes wrong
-  /// Defaults to plain container with given background colour
-  /// If the issue is know then we will show customized UI
-  /// Other options of error params are used
+  /// Error widget that will be shown in case of an error. Defaults to a plain
+  /// [Container] with a given [backgroundColor]. If the issue is known, i.e.
+  /// either a title or a description of the error is present, [errorTitle] and
+  /// [errorBody] are used instead, with fallback to their default values.
   final Widget? errorWidget;
 
-  /// Title that need to be shown if something goes wrong
-  /// Defaults to `Something went wrong!`
+  /// Error title message that will be shown in case of an error. Defaults to
+  /// "Something went wrong!".
   final String? errorTitle;
 
-  /// Body that need to be shown if something goes wrong
-  /// Defaults to `Oops! Unable to parse the url. We have sent feedback to our developers & we will try to fix this in our next release. Thanks!`
+  /// Error body message that will be shown in case of an error. Defaults to
+  /// "Oops! Unable to parse the url. We have sent feedback to our developers &
+  /// we will try to fix this in our next release. Thanks!"
   final String? errorBody;
 
-  /// Image that will be shown if something goes wrong
-  /// & when multimedia enabled & no meta data is available
-  /// Defaults to `A semi-soccer ball image that looks like crying`
+  /// Image that will be shown in case of an error when [showMultimedia] is set
+  /// to `true` and no metadata could be parsed. Defaults to
+  /// "A semi-soccer ball image that looks like crying".
   final String? errorImage;
 
-  /// Give the overflow type for body text (Description)
-  /// Deaults to `TextOverflow.ellipsis`
+  /// Sets the overflow type for body text (description) of the link.
+  /// Deaults to [TextOverflow.ellipsis].
   final TextOverflow bodyTextOverflow;
 
-  /// Give the limit to body text (Description)
-  /// Defaults to `3`
+  /// Sets the limit to body text (description) of the link. Defaults to `3`.
   final int bodyMaxLines;
 
-  /// Cache result time, default cache `1 day`
-  /// Pass `null` to disable or to fetch latest
+  /// TTL of metadata cache. Defaults to 1 day. Pass `null` to disable caching
+  /// and always make a request for latest metadata.
   final Duration cache;
 
-  /// Customize body `TextStyle`
+  /// Customize body [TextStyle].
   final TextStyle? titleStyle;
 
-  /// Customize body `TextStyle`
+  /// Customize body [TextStyle].
   final TextStyle? bodyStyle;
 
-  /// Show or Hide image if available defaults to `true`
+  /// Whether to show metadata image if it's present. Defaults to `true`.
   final bool showMultimedia;
 
-  /// BorderRadius for the card. Deafults to `12`
+  /// [BorderRadius] for the card. Deafults to `12`.
   final double? borderRadius;
 
-  /// To remove the card elevation set it to `true`
-  /// Default value is `false`
+  /// If set to true, removes card widget's elevation. Defaults to `false`.
   final bool removeElevation;
 
-  /// Box shadow for the card. Deafults to `[BoxShadow(blurRadius: 3, color: Colors.grey)]`
+  /// Box shadow for the card. Deafults to
+  /// `[BoxShadow(blurRadius: 3, color: Colors.grey)]`.
   final List<BoxShadow>? boxShadow;
 
-  /// Proxy URL to pass that resolve CORS issues on web.
+  /// Proxy URL that is used to resolve CORS issues on web.
   /// For example, `https://cors-anywhere.herokuapp.com/` .
   final String? proxyUrl;
 
   /// Headers to be added in the HTTP request to the link
   final Map<String, String>? headers;
 
-  /// Function that needs to be called when user taps on the card.
-  /// If not given then given URL will be launched.
-  /// To disable, Pass empty function.
-  final void Function()? onTap;
+  /// Function that is called on card tap. If not provided, then [launchUrl]
+  /// will be used with the provided link. To disable calling [launchUrl] and
+  /// instead do nothing on tap, pass an empty function: `() {}`.
+  final VoidCallback? onTap;
 
   /// Height of the preview card. Defaults to
-  /// `(MediaQuery.of(context).size.height) * 0.15` in case of horizontal and
-  /// `(MediaQuery.of(context).size.height) * 0.25` in case of vertical
+  /// `(MediaQuery.sizeOf(context).height) * 0.15` for the horizontal preview
+  /// and `(MediaQuery.sizeOf(context).height) * 0.25` for the vertical preview.
   final double? previewHeight;
 
-  /// Function only in [AnyLinkPreview.builder]
-  /// allows to build a custom [Widget] from the [Metadata] and [ImageProvider] fetched
-  final Widget Function(BuildContext, Metadata, ImageProvider?)? itemBuilder;
+  /// Builder function that is used only in [AnyLinkPreview.builder] and
+  /// allows building a custom [Widget] from the [Metadata], with either of
+  /// the optional [ImageProvider] or [SvgPicture] fetched.
+  final Widget Function(BuildContext, Metadata, ImageProvider?, SvgPicture?)?
+      itemBuilder;
 
-  AnyLinkPreview({
-    Key? key,
+  /// User-Agent to be used in the HTTP request to the link
+  /// Default: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+  final String? userAgent;
+
+  const AnyLinkPreview({
+    super.key,
     required this.link,
     this.cache = const Duration(days: 1),
     this.titleStyle,
@@ -130,11 +136,12 @@ class AnyLinkPreview extends StatefulWidget {
     this.onTap,
     this.previewHeight,
     this.urlLaunchMode = LaunchMode.platformDefault,
-  })  : itemBuilder = null,
-        super(key: key);
+    this.userAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+  }) : itemBuilder = null;
 
-  AnyLinkPreview.builder({
-    Key? key,
+  const AnyLinkPreview.builder({
+    super.key,
     required this.link,
     required this.itemBuilder,
     this.cache = const Duration(days: 1),
@@ -157,8 +164,9 @@ class AnyLinkPreview extends StatefulWidget {
         removeElevation = false,
         onTap = null,
         previewHeight = null,
-        urlLaunchMode = LaunchMode.platformDefault,
-        super(key: key);
+        userAgent =
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+        urlLaunchMode = LaunchMode.platformDefault;
 
   @override
   AnyLinkPreviewState createState() => AnyLinkPreviewState();
@@ -169,18 +177,18 @@ class AnyLinkPreview extends StatefulWidget {
     String? proxyUrl = '', // Pass for web
     Duration? cache = const Duration(days: 1),
     Map<String, String>? headers,
+    String? userAgent =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
   }) async {
-    var linkValid = isValidLink(link);
-    var proxyValid = true;
-    if ((proxyUrl ?? '').isNotEmpty) proxyValid = isValidLink(proxyUrl!);
-    if (linkValid && proxyValid) {
+    final linkValid = isValidLink(link);
+    if (linkValid) {
       // removing www. from the link if available
       if (link.startsWith('www.')) link = link.replaceFirst('www.', '');
-      var linkToFetch = ((proxyUrl ?? '') + link).trim();
       return _getMetadata(
-        linkToFetch,
+        link,
         cache: cache,
         headers: headers ?? {},
+        userAgent: userAgent,
       );
     } else if (!linkValid) {
       throw Exception('Invalid link');
@@ -194,21 +202,37 @@ class AnyLinkPreview extends StatefulWidget {
     String link, {
     Duration? cache = const Duration(days: 1),
     Map<String, String>? headers,
+    String? userAgent,
+    String? proxyUrl,
   }) async {
     try {
+      var proxyValid = true;
+      var proxy_ = proxyUrl ?? '';
+      if (proxy_.isNotEmpty) proxyValid = isValidLink(proxyUrl!);
+      var linkToFetch = link.trim();
+      if (proxyValid) linkToFetch = (proxy_ + link).trim();
       var info = await LinkAnalyzer.getInfo(
-        link,
+        linkToFetch,
         cache: cache,
         headers: headers ?? {},
+        userAgent: userAgent,
       );
       if (info == null || info.hasData == false) {
-        // if info is null or data is empty try to read url metadata from client side
+        // if info is null or data is empty ,try to read URL metadata
+        // client-side
         info = await LinkAnalyzer.getInfoClientSide(
-          link,
+          linkToFetch,
           cache: cache,
           headers: headers ?? {},
+          userAgent: userAgent,
         );
       }
+
+      var img = info?.image ?? '';
+      if (img.isNotEmpty && proxy_.isNotEmpty) {
+        info?.image = resolveImageUrl(link, proxy_, img);
+      }
+
       return info;
     } catch (error) {
       return null;
@@ -226,7 +250,7 @@ class AnyLinkPreview extends StatefulWidget {
     bool allowUnderscore = false,
   }) {
     if (link.isEmpty) return false;
-    Map<String, Object>? options = {
+    final options = <String, Object>{
       'require_tld': requireTld,
       'require_protocol': requireProtocol,
       'allow_underscores': allowUnderscore,
@@ -242,48 +266,61 @@ class AnyLinkPreview extends StatefulWidget {
     if (protocols.isNotEmpty) options['protocols'] = protocols;
     if (hostWhitelist.isNotEmpty) options['host_whitelist'] = hostWhitelist;
     if (hostBlacklist.isNotEmpty) options['host_blacklist'] = hostBlacklist;
-    var isValid = isURL(link, options);
-    return isValid;
+
+    return isURL(link, options);
   }
 }
 
 class AnyLinkPreviewState extends State<AnyLinkPreview> {
   BaseMetaInfo? _info;
-  late String _errorImage, _errorTitle, _errorBody;
+
+  late final String _errorImage;
+  late final String _errorTitle;
+  late final String _errorBody;
+  late final String originalLink;
+  late final bool _linkValid;
+
+  bool _proxyValid = true;
   bool _loading = false;
-  bool _linkValid = false, _proxyValid = true;
-  String originalLink = '';
 
   @override
   void initState() {
-    originalLink = widget.link;
+    super.initState();
+
+    final providedLink = widget.link;
+
     _errorImage = widget.errorImage ??
         'https://github.com/sur950/any_link_preview/blob/master/lib/assets/giphy.gif?raw=true';
     _errorTitle = widget.errorTitle ?? 'Something went wrong!';
     _errorBody = widget.errorBody ??
-        'Oops! Unable to parse the url. We have sent feedback to our developers & we will try to fix this in our next release. Thanks!';
+        'Oops! Unable to parse the url. We have sent feedback to our developers'
+            ' & we will try to fix this in our next release. Thanks!';
+    _linkValid = AnyLinkPreview.isValidLink(providedLink);
 
-    _linkValid = AnyLinkPreview.isValidLink(originalLink);
     if ((widget.proxyUrl ?? '').isNotEmpty) {
       _proxyValid = AnyLinkPreview.isValidLink(widget.proxyUrl!);
     }
-    if (_linkValid && _proxyValid) {
-      // removing www. from the link if available
-      if (originalLink.startsWith('www.')) {
-        originalLink = originalLink.replaceFirst('www.', '');
+
+    if (_linkValid) {
+      // removing www. from the link if it's present
+      if (providedLink.startsWith('www.')) {
+        originalLink = providedLink.replaceFirst('www.', '');
+      } else {
+        originalLink = providedLink;
       }
-      var linkToFetch = ((widget.proxyUrl ?? '') + originalLink).trim();
+
       _loading = true;
-      _getInfo(linkToFetch);
+      _getInfo(originalLink, widget.proxyUrl);
     }
-    super.initState();
   }
 
-  Future<void> _getInfo(String link) async {
+  Future<void> _getInfo(String link, String? proxyUrl) async {
     _info = await AnyLinkPreview._getMetadata(
       link,
       cache: widget.cache,
       headers: widget.headers,
+      userAgent: widget.userAgent,
+      proxyUrl: proxyUrl,
     );
     if (mounted) {
       setState(() {
@@ -292,8 +329,8 @@ class AnyLinkPreviewState extends State<AnyLinkPreview> {
     }
   }
 
-  void _launchURL(url) async {
-    var uri = Uri.parse(url);
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: widget.urlLaunchMode);
     } else {
@@ -306,18 +343,20 @@ class AnyLinkPreviewState extends State<AnyLinkPreview> {
   }
 
   Widget _buildPlaceHolder(double defaultHeight) {
-    return Container(
+    return SizedBox(
       height: defaultHeight,
-      child: LayoutBuilder(builder: (context, constraints) {
-        var layoutWidth = constraints.biggest.width;
-        var layoutHeight = constraints.biggest.height;
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final layoutWidth = constraints.biggest.width;
+          final layoutHeight = constraints.biggest.height;
 
-        return Container(
-          color: widget.backgroundColor,
-          width: layoutWidth,
-          height: layoutHeight,
-        );
-      }),
+          return Container(
+            color: widget.backgroundColor,
+            width: layoutWidth,
+            height: layoutHeight,
+          );
+        },
+      ),
     );
   }
 
@@ -326,32 +365,45 @@ class AnyLinkPreviewState extends State<AnyLinkPreview> {
         ? ((widget.proxyUrl ?? '') + (info.image ?? ''))
         : null;
 
+    final imageProviderValue = buildImageProvider(image, _errorImage);
     if (widget.itemBuilder != null) {
-      return widget.itemBuilder!(context, info, _buildImageProvider(image));
+      return widget.itemBuilder!(
+        context,
+        info,
+        imageProviderValue.image,
+        imageProviderValue.svgImage,
+      );
+    }
+
+    final isTitleEmpty =
+        LinkAnalyzer.isEmpty(info.title) || info.title == getDomain(info.url!);
+    final isDescEmpty =
+        LinkAnalyzer.isEmpty(info.desc) || info.desc == info.url;
+    if (isTitleEmpty && isDescEmpty && widget.errorWidget != null) {
+      return widget.errorWidget!;
     }
 
     final title =
         LinkAnalyzer.isNotEmpty(info.title) ? info.title! : _errorTitle;
     final desc = LinkAnalyzer.isNotEmpty(info.desc) ? info.desc! : _errorBody;
-    final imageProvider = _buildImageProvider(image ?? _errorImage);
 
     return Container(
       decoration: BoxDecoration(
         color: widget.backgroundColor,
         borderRadius: BorderRadius.circular(widget.borderRadius ?? 12),
         boxShadow: widget.removeElevation
-            ? []
+            ? const []
             : widget.boxShadow ??
-                [BoxShadow(blurRadius: 3, color: Colors.grey)],
+                [const BoxShadow(blurRadius: 3, color: Colors.grey)],
       ),
       height: height,
       child: (widget.displayDirection == UIDirection.uiDirectionHorizontal)
           ? LinkViewHorizontal(
-              key: widget.key ?? Key(originalLink.toString()),
+              key: widget.key ?? Key(originalLink),
               url: originalLink,
               title: title,
               description: desc,
-              imageProvider: imageProvider,
+              imageProvider: imageProviderValue,
               onTap: widget.onTap ?? () => _launchURL(originalLink),
               titleTextStyle: widget.titleStyle,
               bodyTextStyle: widget.bodyStyle,
@@ -362,11 +414,11 @@ class AnyLinkPreviewState extends State<AnyLinkPreview> {
               radius: widget.borderRadius ?? 12,
             )
           : LinkViewVertical(
-              key: widget.key ?? Key(originalLink.toString()),
+              key: widget.key ?? Key(originalLink),
               url: originalLink,
               title: title,
               description: desc,
-              imageProvider: imageProvider,
+              imageProvider: imageProviderValue,
               onTap: widget.onTap ?? () => _launchURL(originalLink),
               titleTextStyle: widget.titleStyle,
               bodyTextStyle: widget.bodyStyle,
@@ -379,34 +431,19 @@ class AnyLinkPreviewState extends State<AnyLinkPreview> {
     );
   }
 
-  ImageProvider? _buildImageProvider(String? image) {
-    ImageProvider? imageProvider;
-    try {
-      if (image != null) imageProvider = NetworkImage(image);
-      if (image != null && image.startsWith('data:image')) {
-        imageProvider = MemoryImage(
-          base64Decode(image.substring(image.indexOf('base64') + 7)),
-        );
-      }
-    } catch (error) {
-      debugPrint('Image parsing failed -> $error');
-    }
-
-    return imageProvider;
-  }
-
   @override
   Widget build(BuildContext context) {
+    final mediaQuerySize = MediaQuery.sizeOf(context);
     final info = _info as Metadata?;
-    var height = widget.previewHeight ??
+    final height = widget.previewHeight ??
         ((widget.displayDirection == UIDirection.uiDirectionHorizontal ||
                 !widget.showMultimedia)
-            ? ((MediaQuery.of(context).size.height) * 0.15)
-            : ((MediaQuery.of(context).size.height) * 0.25));
+            ? ((mediaQuerySize.height) * 0.15)
+            : ((mediaQuerySize.height) * 0.25));
 
-    Widget loadingErrorWidget = Container(
+    final loadingErrorWidget = Container(
       height: height,
-      width: MediaQuery.of(context).size.width,
+      width: mediaQuerySize.width,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(widget.borderRadius ?? 12),
         color: Colors.grey[200],

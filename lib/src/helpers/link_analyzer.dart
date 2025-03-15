@@ -4,6 +4,8 @@ import 'dart:async' as async;
 import 'dart:convert';
 
 import 'package:any_link_preview/any_link_preview.dart';
+import 'package:any_link_preview/src/parser/youtube_parser.dart';
+import 'package:any_link_preview/src/utilities/http_redirect_check.dart';
 import 'package:flutter/foundation.dart';
 import 'package:html/dom.dart' show Document;
 import 'package:html/parser.dart';
@@ -13,21 +15,31 @@ import 'package:string_validator/string_validator.dart';
 import '../parser/html_parser.dart';
 import '../parser/json_ld_parser.dart';
 import '../parser/og_parser.dart';
-import '../parser/twitter_parser.dart';
 import '../parser/other_parser.dart';
+import '../parser/twitter_parser.dart';
 import '../parser/util.dart';
 import 'cache_manager.dart';
 
 class LinkAnalyzer {
-  /// Is it an empty string
+  /// Checks whether a string is not empty, doesn't contain a `'null'` string,
+  /// and not blank
   static bool isNotEmpty(String? str) {
-    return str != null && str.trim().isNotEmpty;
+    return str != null &&
+        str.trim().isNotEmpty &&
+        str.trim().toLowerCase() != 'null';
   }
 
-  /// return [Metadata] from cache if available
+  /// Checks whether a string is empty, contains a `'null'` string, or is blank.
+  static bool isEmpty(String? str) {
+    return str == null ||
+        str.trim().isEmpty ||
+        str.trim().toLowerCase() == 'null';
+  }
+
+  /// Returns [Metadata] from cache if available.
   static Future<Metadata?> getInfoFromCache(String url) async {
     Metadata? info_;
-    // print(url);
+
     try {
       final infoJson = await CacheManager.getJson(key: url);
       if (infoJson != null) {
@@ -45,9 +57,8 @@ class LinkAnalyzer {
     return info_;
   }
 
-  /// deletes [Metadata] from cache if available
+  /// Deletes [Metadata] from cache if present.
   static void _deleteFromCache(String url) {
-    // print(url);
     try {
       async.unawaited(CacheManager.deleteKey(url));
     } catch (e) {
@@ -55,24 +66,26 @@ class LinkAnalyzer {
     }
   }
 
-  // Twitter generates meta tags on client side so it's impossible to read
-  // So we use this hack to fetch server side rendered meta tags
-  // This helps for URL's who follow client side meta tag generation technique
+  /// Twitter generates meta tags client-side so it's impossible to read their
+  /// values from a server request. We use this hack to fetch server-side
+  /// rendered meta tags.
+  ///
+  /// This method is useful for URLs that use client-side meta tag generation
+  /// technique.
   static Future<Metadata?> getInfoClientSide(
     String url, {
     Duration? cache = const Duration(hours: 24),
     Map<String, String> headers = const {},
+    String? userAgent = 'WhatsApp/2.21.12.21 A',
   }) =>
       getInfo(
         url,
         cache: cache,
         headers: headers,
-        // 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko)',
-        userAgent:
-            'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        userAgent: userAgent,
       );
 
-  /// Fetches a [url], validates it, and returns [Metadata].
+  /// Fetches a [url], validates it, then returns [Metadata].
   static Future<Metadata?> getInfo(
     String url, {
     Duration? cache = const Duration(hours: 24),
@@ -87,29 +100,35 @@ class LinkAnalyzer {
     }
     if (info != null) return info;
 
-    // info = await _getInfo(url, multimedia);
     if (!isURL(url)) return null;
 
-    /// Default values; Domain name as the [title],
-    /// URL as the [description]
+    // Default values; Domain name as the [title],
+    // URL as the [description]
     info?.title = getDomain(url);
     info?.desc = url;
+    info?.siteName = getDomain(url);
     info?.url = url;
 
     try {
       // Make our network call
-      final response = await http.get(
-        Uri.parse(url),
-        headers: {
-          ...headers,
-          ...userAgent != null ? {'User-Agent': userAgent} : {}
-        },
-      );
+      final videoId = getYouTubeVideoId(url);
+      final response = videoId == null
+          ? await fetchWithRedirects(
+              url,
+              headers: headers,
+              userAgent: userAgent,
+            )
+          : await getYoutubeData(
+              videoId,
+              headers: headers,
+              userAgent: userAgent,
+            );
       final headerContentType = response.headers['content-type'];
 
       if (headerContentType != null && headerContentType.startsWith('image/')) {
         info?.title = '';
         info?.desc = '';
+        info?.siteName = '';
         info?.image = url;
         return info;
       }
@@ -134,7 +153,7 @@ class LinkAnalyzer {
     }
   }
 
-  /// Takes an [http.Response] and returns a [html.Document]
+  /// Takes an [http.Response] and returns a [Document].
   static Document? responseToDocument(http.Response response) {
     if (response.statusCode != 200) return null;
 
@@ -148,39 +167,42 @@ class LinkAnalyzer {
     return document;
   }
 
-  /// Returns instance of [Metadata] with data extracted from the [html.Document]
-  /// Provide a given url as a fallback when there are no Document url extracted
-  /// by the parsers.
+  /// Returns instance of [Metadata] with data extracted from the
+  /// [Document]. Provide a [url] as a fallback when there are no
+  /// Document URLs extracted by the parsers.
   ///
-  /// Future: Can pass in a strategy i.e: to retrieve only OpenGraph, or OpenGraph and Json+LD only
+  /// Future: Can pass in a strategy, e.g.: to retrieve only OpenGraph, or
+  /// OpenGraph and Json+LD only.
   static Metadata? _extractMetadata(Document document, {String? url}) {
     return _parse(document, url: url);
   }
 
-  /// This is the default strategy for building our [Metadata]
+  /// This is the default strategy for building our [Metadata].
   ///
-  /// It tries [OpenGraphParser], then [TwitterParser],
-  /// then [JsonLdParser], and falls back to [HTMLMetaParser] tags for missing data.
-  /// You may optionally provide a URL to the function,
-  /// used to resolve relative images or to compensate for the
-  /// lack of URI identifiers from the metadata parsers.
+  /// It tries [OpenGraphParser], then [TwitterParser], then [JsonLdParser],
+  /// and then falls back to [HtmlMetaParser] tags for missing data. You may
+  /// optionally provide a URL to the function, used to resolve relative images
+  /// or to compensate for the lack of URI identifiers from the metadata
+  /// parsers.
   static Metadata _parse(Document? document, {String? url}) {
     final output = Metadata();
 
     final parsers = [
       _openGraph(document),
       _twitterCard(document),
+      _youtubeCard(document),
       _jsonLdSchema(document),
       _htmlMeta(document),
       _otherParser(document),
     ];
 
     for (final p in parsers) {
-      if (p == null) break;
+      if (p == null) continue;
 
       output.title ??= p.title;
       output.desc ??= p.desc;
       output.image ??= p.image;
+      output.siteName ??= p.siteName;
       output.url ??= p.url ?? url;
 
       if (output.hasAllMetadata) break;
@@ -215,6 +237,14 @@ class LinkAnalyzer {
   static Metadata? _jsonLdSchema(Document? document) {
     try {
       return JsonLdParser(document).parse();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Metadata? _youtubeCard(Document? document) {
+    try {
+      return YoutubeParser(document).parse();
     } catch (e) {
       return null;
     }
